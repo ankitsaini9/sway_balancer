@@ -1,4 +1,4 @@
-library;
+library logExpMath;
 
 // Math
 const ADD_OVERFLOW: u64 = 0;
