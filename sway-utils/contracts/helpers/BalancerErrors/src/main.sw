@@ -1,4 +1,4 @@
-library;
+library BalancerErrors;
 
 // Math
 const ADD_OVERFLOW: u64 = 0;

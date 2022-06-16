@@ -28,21 +28,21 @@ fn add(a: u64, b: u64) -> u64 {
 
     let c = a + b;
     assert(c >= a, ADD_OVERFLOW);
-    return c;
+    c
 }
 
 fn sub(a: u64, b: u64) -> u64 {
     // Fixed Point addition is the same as regular checked addition
 
     assert(b <= a, SUB_OVERFLOW);
-    return a - b;
+    a - b
 }
 
 fn mul_down(a: u64, b: u64) ->  u64 {
     let product = a * b;
     assert(a == 0 || product / a == b, MUL_OVERFLOW);
 
-    return product / ONE;
+    product / ONE
 }
 
 fn mul_up(a: u64, b: u64) -> u64 {
@@ -50,7 +50,7 @@ fn mul_up(a: u64, b: u64) -> u64 {
     assert(a == 0 || product / a == b, MUL_OVERFLOW);
 
     if product == 0 {
-        return 0;
+        0
     } else {
         // The traditional div_up formula is:
         // div_up(x, y) := (x + y - 1) / y
@@ -58,7 +58,7 @@ fn mul_up(a: u64, b: u64) -> u64 {
         // div_up(x, y) := (x - 1) / y + 1
         // Note that this requires x != 0, which we already tested for.
         let res: u64 = ((product - 1) / ONE) + 1;
-        return res;
+        res
     }
 }
 
@@ -66,12 +66,12 @@ fn div_down(a: u64, b: u64) -> u64 {
     assert(b != 0, ZERO_DIVISION);
 
     if (a == 0) {
-        return 0;
+        0
     } else {
         let aInflated = a * ONE;
         assert(aInflated / a == ONE, DIV_INTERNAL); // mul overflow
 
-        return aInflated / b;
+        aInflated / b
     }
 }
 
@@ -79,7 +79,7 @@ fn div_up(a: u64, b: u64) -> u64 {
     assert(b != 0, ZERO_DIVISION);
 
     if (a == 0) {
-        return 0;
+        0
     } else {
         let aInflated = a * ONE;
         assert(aInflated / a == ONE, DIV_INTERNAL); // mul overflow
@@ -90,7 +90,7 @@ fn div_up(a: u64, b: u64) -> u64 {
         // div_up(x, y) := (x - 1) / y + 1
         // Note that this requires x != 0, which we already tested for.
 
-        return ((aInflated - 1) / b) + 1;
+        ((aInflated - 1) / b) + 1
     }
 }
 
@@ -104,20 +104,20 @@ impl FixedPoint for Contract {
         // Optimize for when y equals 1.0, 2.0 or 4.0, as those are very simple to implement and occur often in 50/50
         // and 80/20 Weighted Pools
         if (y == ONE) {
-            return x;
+            x
         } else if (y == TWO) {
-            return mul_down(x, x);
+            mul_down(x, x)
         } else if (y == FOUR) {
             let square = mul_down(x, x);
-            return mul_down(square, square);
+            mul_down(square, square)
         } else {
             let raw = LogExpMath.pow(x, y);
             let maxError = add(mul_up(raw, MAX_POW_RELATIVE_ERROR), 1);
 
             if (raw < maxError) {
-                return 0;
+                0
             } else {
-                return sub(raw, maxError);
+                sub(raw, maxError)
             }
         }
     }
@@ -130,17 +130,17 @@ impl FixedPoint for Contract {
         // Optimize for when y equals 1.0, 2.0 or 4.0, as those are very simple to implement and occur often in 50/50
         // and 80/20 Weighted Pools
         if (y == ONE) {
-            return x;
+            x
         } else if (y == TWO) {
-            return mul_up(x, x);
+            mul_up(x, x)
         } else if (y == FOUR) {
             let square = mul_up(x, x);
-            return mul_up(square, square);
+            mul_up(square, square)
         } else {
             let raw = LogExpMath.pow(x, y);
             let maxError = add(mul_up(raw, MAX_POW_RELATIVE_ERROR), 1);
 
-            return add(raw, maxError);
+            add(raw, maxError)
         }
     }
 
@@ -151,11 +151,11 @@ impl FixedPoint for Contract {
      * prevents intermediate negative values.
      */
     fn complement(x: u64) -> u64 {
-        // return (x < ONE) ? (ONE - x) : 0;
+        // (x < ONE) ? (ONE - x) : 0;
         if x < ONE  {
-            return ONE - x;
+            ONE - x
         } else { 
-            return 0;
+            0
         }
     }
 
