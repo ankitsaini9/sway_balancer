@@ -1,7 +1,16 @@
 contract;
 
 abi MyContract {
-    fn test_function() -> bool;
+    fn invariantRatio() -> u64;
+    fn _calcOutGivenIn() -> u64;
+    fn _calcInGivenOut() -> u64;
+    fn _calcBptOutGivenExactTokensIn() -> u64;
+    fn _calcTokenInGivenExactBptOut() -> u64;
+    fn _calcAllTokensInGivenExactBptOut() -> u64;
+    fn _calcBptInGivenExactTokensOut() -> u64;
+    fn _calcTokensOutGivenExactBptIn() -> u64;
+    fn _calcDueProtocolSwapFeeBptAmount() -> u64;
+    fn _calcBptOutAddToken() -> u64;
 }
 
 
@@ -24,6 +33,87 @@ const _MAX_INVARIANT_RATIO: u64 = 3;
 // Invariant shrink limit: non-proportional exits cannot cause the invariant to decrease by less than this ratio.
 const _MIN_INVARIANT_RATIO: u64 = 7;
 
+/**
+* @dev Intermediate fn to avoid stack-too-deep errors.
+*/
+fn _computeJoinExactTokensInInvariantRatio(
+    balances: [u64; 8],
+    normalizedWeights: [u64; 8],
+    amountsIn: [u64; 8],
+    balanceRatiosWithFee: [u64; 8],
+    invariantRatioWithFees: [u64; 8],
+    swapFeePercentage: [u64; 8]
+) -> u64 {
+    // Swap fees are charged on all tokens that are being added in a larger proportion than the overall invariant
+    // increase.
+    let mut invariantRatio = ONE;
+
+    let mut count = 0;
+    while count < 8 {
+        let amountInWithoutFee: u64 = 0;
+
+        if balanceRatiosWithFee[count] > invariantRatioWithFees {
+            let nonTaxableAmount = balances[count].mulDown(invariantRatioWithFees.sub(ONE));
+            let taxableAmount = amountsIn[count].sub(nonTaxableAmount);
+            let swapFee = taxableAmount.mulUp(swapFeePercentage);
+
+            amountInWithoutFee = nonTaxableAmount.add(taxableAmount.sub(swapFee));
+        } else {
+            amountInWithoutFee = amountsIn[count];
+        }
+        let balanceRatio = balances[count].add(amountInWithoutFee).divDown(balances[count]);
+
+        invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[count]));
+        
+        count = count + 1;
+        
+        invariantRatio
+
+    }
+
+}
+
+/**
+    * @dev Intermediate fn to avoid stack-too-deep errors.
+    */
+fn _computeExitExactTokensOutInvariantRatio(
+    balances: [u64; 8],
+    normalizedWeights: [u64; 8],
+    amountsOut: [u64; 8],
+    balanceRatiosWithoutFee: [u64; 8],
+    invariantRatioWithoutFees: u64,
+    swapFeePercentage: u64
+) -> u64 {
+    invariantRatio = ONE;
+
+    let mut count = 0;
+    while count < 8 {
+        // Swap fees are typically charged on 'token in', but there is no 'token in' here, so we apply it to
+        // 'token out'. This results in slightly larger price impact.
+
+        let amountOutWithFee: u64 = 0;
+        if (invariantRatioWithoutFees > balanceRatiosWithoutFee[count]) {
+            uint256 nonTaxableAmount = balances[count].mulDown(invariantRatioWithoutFees.complement());
+            uint256 taxableAmount = amountsOut[count].sub(nonTaxableAmount);
+            uint256 taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
+
+            amountOutWithFee = nonTaxableAmount.add(taxableAmountPlusFees);
+        } else {
+            amountOutWithFee = amountsOut[count];
+        }
+
+        let balanceRatio = balances[count].sub(amountOutWithFee).divDown(balances[count]);
+
+        invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[count]));
+        
+        count = count + 1;
+        
+        invariantRatio
+
+    }
+}
+
+
 
 impl MyContract for Contract {
     // About swap fees on joins and exits:
@@ -36,11 +126,7 @@ impl MyContract for Contract {
     // Invariant is used to collect protocol swap fees by comparing its value between two times.
     // So we can round always to the same direction. It is also used to initiate the BPT amount
     // and, because there is a minimum BPT, we round down the invariant.
-    fn _calculateInvariant(uint256[] memory normalizedWeights, uint256[] memory balances)
-        internal
-        pure
-        returns (uint256 invariant)
-    {       
+    fn _calculateInvariant(normalizedWeights: [u64; 8], balances: [u64; 8]) -> u64 {       
         /**********************************************************************************************
         // invariant               _____                                                             //
         // wi = weight index i      | |      wi                                                      //
@@ -48,23 +134,29 @@ impl MyContract for Contract {
         // i = invariant                                                                             //
         **********************************************************************************************/
 
-        invariant = ONE;
-        for (uint256 i = 0; i < normalizedWeights.length; i++) {
-            invariant = invariant.mulDown(balances[i].powDown(normalizedWeights[i]));
-        }
+        let invariant    = ONE;
+        // for (uint256 i = 0; i < normalizedWeights.length; i++) {
+        //     invariant = invariant.mulDown(balances[i].powDown(normalizedWeights[i]));
+        // }
+        let mut count = 0;
+        while count < 8 {
+            invariant = invariant.mulDown(balances[count].powDown(normalizedWeights[count]));
+            count = count + 1;
+        } 
 
-        _require(invariant > 0, Errors.ZERO_INVARIANT);
+        assert(invariant > 0, ZERO_INVARIANT);
+        invariant
     }
 
     // Computes how many tokens can be taken out of a pool if `amountIn` are sent, given the
     // current balances and weights.
     fn _calcOutGivenIn(
-        uint256 balanceIn,
-        uint256 weightIn,
-        uint256 balanceOut,
-        uint256 weightOut,
-        uint256 amountIn
-    ) internal pure returns (uint256) {
+        balanceIn: u64,
+        weightIn: u64,
+        balanceOut: u64,
+        weightOut: u64,
+        amountIn: u64
+    ) -> u64 {
         /**********************************************************************************************
         // outGivenIn                                                                                //
         // aO = amountOut                                                                            //
@@ -81,25 +173,25 @@ impl MyContract for Contract {
         // Because bI / (bI + aI) <= 1, the exponent rounds down.
 
         // Cannot exceed maximum in ratio
-        _require(amountIn <= balanceIn.mulDown(_MAX_IN_RATIO), Errors.MAX_IN_RATIO);
+        assert(amountIn <= balanceIn.mulDown(_MAX_IN_RATIO), MAX_IN_RATIO); 
 
-        uint256 denominator = balanceIn.add(amountIn);
-        uint256 base = balanceIn.divUp(denominator);
-        uint256 exponent = weightIn.divDown(weightOut);
-        uint256 power = base.powUp(exponent);
+        let denominator: u64 = balanceIn.add(amountIn);
+        let base: u64 = balanceIn.divUp(denominator);
+        let exponent: u64 = weightIn.divDown(weightOut);
+        let power: u64 = base.powUp(exponent);
 
-        return balanceOut.mulDown(power.complement());
+        balanceOut.mulDown(power.complement())
     }
 
     // Computes how many tokens must be sent to a pool in order to take `amountOut`, given the
     // current balances and weights.
     fn _calcInGivenOut(
-        uint256 balanceIn,
-        uint256 weightIn,
-        uint256 balanceOut,
-        uint256 weightOut,
-        uint256 amountOut
-    ) internal pure returns (uint256) {
+        balanceIn: u64,
+        weightIn: u64,
+        balanceOut: u64,
+        weightOut: u64,
+        amountOut: u64
+    ) -> u64 {
         /**********************************************************************************************
         // inGivenOut                                                                                //
         // aO = amountOut                                                                            //
@@ -116,37 +208,40 @@ impl MyContract for Contract {
         // Because b0 / (b0 - a0) >= 1, the exponent rounds up.
 
         // Cannot exceed maximum out ratio
-        _require(amountOut <= balanceOut.mulDown(_MAX_OUT_RATIO), Errors.MAX_OUT_RATIO);
+        assert(amountOut <= balanceOut.mulDown(_MAX_OUT_RATIO), MAX_OUT_RATIO);
 
-        uint256 base = balanceOut.divUp(balanceOut.sub(amountOut));
-        uint256 exponent = weightOut.divUp(weightIn);
-        uint256 power = base.powUp(exponent);
+        let base = balanceOut.divUp(balanceOut.sub(amountOut));
+        let exponent = weightOut.divUp(weightIn);
+        let power = base.powUp(exponent);
 
         // Because the base is larger than one (and the power rounds up), the power should always be larger than one, so
         // the following subtraction should never revert.
-        uint256 ratio = power.sub(FixedPoint.ONE);
+        let ratio = power.sub(FixedPoint.ONE);
 
-        return balanceIn.mulUp(ratio);
+        balanceIn.mulUp(ratio)
     }
 
     fn _calcBptOutGivenExactTokensIn(
-        uint256[] memory balances,
-        uint256[] memory normalizedWeights,
-        uint256[] memory amountsIn,
-        uint256 bptTotalSupply,
-        uint256 swapFeePercentage
-    ) internal pure returns (uint256) {
+        balances: [u64; 8],
+        normalizedWeights: [u64; 8],
+        amountsIn: [u64; 8],
+        bptTotalSupply: u64,
+        swapFeePercentage: u64
+    ) -> u64 {
         // BPT out, so we round down overall.
 
-        uint256[] memory balanceRatiosWithFee = new uint256[](amountsIn.length);
+        let mut balanceRatiosWithFee: [u64; 8] = [-1, -1, -1, -1, -1, -1, -1, -1];
 
-        uint256 invariantRatioWithFees = 0;
-        for (uint256 i = 0; i < balances.length; i++) {
-            balanceRatiosWithFee[i] = balances[i].add(amountsIn[i]).divDown(balances[i]);
-            invariantRatioWithFees = invariantRatioWithFees.add(balanceRatiosWithFee[i].mulDown(normalizedWeights[i]));
+        let mut invariantRatioWithFees: u64 = 0;
+
+        let mut count = 0;
+        while count < 8 {
+            balanceRatiosWithFee[count] = balances[count].add(amountsIn[count]).divDown(balances[count]);
+            invariantRatioWithFees = invariantRatioWithFees.add(balanceRatiosWithFee[count].mulDown(normalizedWeights[count]));
+            count = count + 1;
         }
 
-        uint256 invariantRatio = _computeJoinExactTokensInInvariantRatio(
+        let invariantRatio = _computeJoinExactTokensInInvariantRatio(
             balances,
             normalizedWeights,
             amountsIn,
@@ -155,53 +250,22 @@ impl MyContract for Contract {
             swapFeePercentage
         );
 
-        uint256 bptOut = (invariantRatio > FixedPoint.ONE)
-            ? bptTotalSupply.mulDown(invariantRatio.sub(FixedPoint.ONE))
-            : 0;
-        return bptOut;
-    }
-
-    /**
-     * @dev Intermediate fn to avoid stack-too-deep errors.
-     */
-    fn _computeJoinExactTokensInInvariantRatio(
-        uint256[] memory balances,
-        uint256[] memory normalizedWeights,
-        uint256[] memory amountsIn,
-        uint256[] memory balanceRatiosWithFee,
-        uint256 invariantRatioWithFees,
-        uint256 swapFeePercentage
-    ) private pure returns (uint256 invariantRatio) {
-        // Swap fees are charged on all tokens that are being added in a larger proportion than the overall invariant
-        // increase.
-        invariantRatio = FixedPoint.ONE;
-
-        for (uint256 i = 0; i < balances.length; i++) {
-            uint256 amountInWithoutFee;
-
-            if (balanceRatiosWithFee[i] > invariantRatioWithFees) {
-                uint256 nonTaxableAmount = balances[i].mulDown(invariantRatioWithFees.sub(FixedPoint.ONE));
-                uint256 taxableAmount = amountsIn[i].sub(nonTaxableAmount);
-                uint256 swapFee = taxableAmount.mulUp(swapFeePercentage);
-
-                amountInWithoutFee = nonTaxableAmount.add(taxableAmount.sub(swapFee));
-            } else {
-                amountInWithoutFee = amountsIn[i];
-            }
-
-            uint256 balanceRatio = balances[i].add(amountInWithoutFee).divDown(balances[i]);
-
-            invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[i]));
+        if invariantRatio > FixedPoint.ONE {
+            let bptOut = bptTotalSupply.mulDown(invariantRatio.sub(FixedPoint.ONE));
+        } 
+        else {
+            let bptOut: u64 = 0;
         }
+        bptOut
     }
 
     fn _calcTokenInGivenExactBptOut(
-        uint256 balance,
-        uint256 normalizedWeight,
-        uint256 bptAmountOut,
-        uint256 bptTotalSupply,
-        uint256 swapFeePercentage
-    ) internal pure returns (uint256) {
+        balance: u64,
+        normalizedWeight,: u64,
+        bptAmountOut,: u64,
+        bptTotalSupply,: u64,
+        swapFeePercentage: u64
+    ) -> u64 {
         /******************************************************************************************
         // tokenInForExactBPTOut                                                                 //
         // a = amountIn                                                                          //
@@ -214,29 +278,29 @@ impl MyContract for Contract {
         // Token in, so we round up overall.
 
         // Calculate the factor by which the invariant will increase after minting BPTAmountOut
-        uint256 invariantRatio = bptTotalSupply.add(bptAmountOut).divUp(bptTotalSupply);
-        _require(invariantRatio <= _MAX_INVARIANT_RATIO, Errors.MAX_OUT_BPT_FOR_TOKEN_IN);
+        let invariantRatio = bptTotalSupply.add(bptAmountOut).divUp(bptTotalSupply);
+        assert(invariantRatio <= _MAX_INVARIANT_RATIO, MAX_OUT_BPT_FOR_TOKEN_IN);
 
         // Calculate by how much the token balance has to increase to match the invariantRatio
-        uint256 balanceRatio = invariantRatio.powUp(FixedPoint.ONE.divUp(normalizedWeight));
+        let balanceRatio = invariantRatio.powUp(FixedPoint.ONE.divUp(normalizedWeight));
 
-        uint256 amountInWithoutFee = balance.mulUp(balanceRatio.sub(FixedPoint.ONE));
+        let amountInWithoutFee = balance.mulUp(balanceRatio.sub(FixedPoint.ONE));
 
         // We can now compute how much extra balance is being deposited and used in virtual swaps, and charge swap fees
         // accordingly.
-        uint256 taxableAmount = amountInWithoutFee.mulUp(normalizedWeight.complement());
-        uint256 nonTaxableAmount = amountInWithoutFee.sub(taxableAmount);
+        let taxableAmount = amountInWithoutFee.mulUp(normalizedWeight.complement());
+        let nonTaxableAmount = amountInWithoutFee.sub(taxableAmount);
 
-        uint256 taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
+        let taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
 
-        return nonTaxableAmount.add(taxableAmountPlusFees);
+        nonTaxableAmount.add(taxableAmountPlusFees)
     }
 
     fn _calcAllTokensInGivenExactBptOut(
-        uint256[] memory balances,
-        uint256 bptAmountOut,
-        uint256 totalBPT
-    ) internal pure returns (uint256[] memory) {
+        balances: [u64; 8],
+        bptAmountOut: u64,
+        totalBPT: u64
+    ) -> [u64; 8] {
         /************************************************************************************
         // tokensInForExactBptOut                                                          //
         // (per token)                                                                     //
@@ -247,35 +311,41 @@ impl MyContract for Contract {
         ************************************************************************************/
 
         // Tokens in, so we round up overall.
-        uint256 bptRatio = bptAmountOut.divUp(totalBPT);
+        let bptRatio = bptAmountOut.divUp(totalBPT);
 
-        uint256[] memory amountsIn = new uint256[](balances.length);
-        for (uint256 i = 0; i < balances.length; i++) {
-            amountsIn[i] = balances[i].mulUp(bptRatio);
+        let mut amountsIn: [u64; 8] = [-1, -1, -1, -1, -1, -1, -1, -1];
+
+        let mut count = 0;
+        while count < 8 {
+            amountIn[count] = balances[i].mulUp(bptRatio);
+            count = count + 1;
         }
 
-        return amountsIn;
+        amountsIn
     }
 
     fn _calcBptInGivenExactTokensOut(
-        uint256[] memory balances,
-        uint256[] memory normalizedWeights,
-        uint256[] memory amountsOut,
-        uint256 bptTotalSupply,
-        uint256 swapFeePercentage
-    ) internal pure returns (uint256) {
+        balances: [u64; 8],
+        normalizedWeights: [u64; 8],
+        amountsOut: [u64; 8],
+        bptTotalSupply: u64,
+        swapFeePercentage: u64
+    ) -> u64 {
         // BPT in, so we round up overall.
 
-        uint256[] memory balanceRatiosWithoutFee = new uint256[](amountsOut.length);
-        uint256 invariantRatioWithoutFees = 0;
-        for (uint256 i = 0; i < balances.length; i++) {
-            balanceRatiosWithoutFee[i] = balances[i].sub(amountsOut[i]).divUp(balances[i]);
+        let mut balanceRatiosWithoutFee: [u64; 8] = [-1, -1, -1, -1, -1, -1, -1, -1];
+        let mut invariantRatioWithoutFees: u64 = 0;
+
+        let mut count = 0;
+        while count < 8 {
+            balanceRatiosWithoutFee[count] = balances[count].sub(amountsOut[count]).divUp(balances[count]);
             invariantRatioWithoutFees = invariantRatioWithoutFees.add(
-                balanceRatiosWithoutFee[i].mulUp(normalizedWeights[i])
+                balanceRatiosWithoutFee[count].mulUp(normalizedWeights[count])
             );
+            count = count + 1;
         }
 
-        uint256 invariantRatio = _computeExitExactTokensOutInvariantRatio(
+        let invariantRatio = _computeExitExactTokensOutInvariantRatio(
             balances,
             normalizedWeights,
             amountsOut,
@@ -284,50 +354,16 @@ impl MyContract for Contract {
             swapFeePercentage
         );
 
-        return bptTotalSupply.mulUp(invariantRatio.complement());
-    }
-
-    /**
-     * @dev Intermediate fn to avoid stack-too-deep errors.
-     */
-    fn _computeExitExactTokensOutInvariantRatio(
-        uint256[] memory balances,
-        uint256[] memory normalizedWeights,
-        uint256[] memory amountsOut,
-        uint256[] memory balanceRatiosWithoutFee,
-        uint256 invariantRatioWithoutFees,
-        uint256 swapFeePercentage
-    ) private pure returns (uint256 invariantRatio) {
-        invariantRatio = FixedPoint.ONE;
-
-        for (uint256 i = 0; i < balances.length; i++) {
-            // Swap fees are typically charged on 'token in', but there is no 'token in' here, so we apply it to
-            // 'token out'. This results in slightly larger price impact.
-
-            uint256 amountOutWithFee;
-            if (invariantRatioWithoutFees > balanceRatiosWithoutFee[i]) {
-                uint256 nonTaxableAmount = balances[i].mulDown(invariantRatioWithoutFees.complement());
-                uint256 taxableAmount = amountsOut[i].sub(nonTaxableAmount);
-                uint256 taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
-
-                amountOutWithFee = nonTaxableAmount.add(taxableAmountPlusFees);
-            } else {
-                amountOutWithFee = amountsOut[i];
-            }
-
-            uint256 balanceRatio = balances[i].sub(amountOutWithFee).divDown(balances[i]);
-
-            invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[i]));
-        }
+        bptTotalSupply.mulUp(invariantRatio.complement())
     }
 
     fn _calcTokenOutGivenExactBptIn(
-        uint256 balance,
-        uint256 normalizedWeight,
-        uint256 bptAmountIn,
-        uint256 bptTotalSupply,
-        uint256 swapFeePercentage
-    ) internal pure returns (uint256) {
+        balance: u64,
+        normalizedWeight,: u64,
+        bptAmountIn,: u64,
+        bptTotalSupply,: u64,
+        swapFeePercentage: u64
+    ) -> u64 {
         /*****************************************************************************************
         // exactBPTInForTokenOut                                                                //
         // a = amountOut                                                                        //
@@ -341,33 +377,33 @@ impl MyContract for Contract {
         // rounds up). Because (totalBPT - bptIn) / totalBPT <= 1, the exponent rounds down.
 
         // Calculate the factor by which the invariant will decrease after burning BPTAmountIn
-        uint256 invariantRatio = bptTotalSupply.sub(bptAmountIn).divUp(bptTotalSupply);
-        _require(invariantRatio >= _MIN_INVARIANT_RATIO, Errors.MIN_BPT_IN_FOR_TOKEN_OUT);
+        let invariantRatio = bptTotalSupply.sub(bptAmountIn).divUp(bptTotalSupply);
+        assert(invariantRatio >= _MIN_INVARIANT_RATIO, MIN_BPT_IN_FOR_TOKEN_OUT);
 
         // Calculate by how much the token balance has to decrease to match invariantRatio
-        uint256 balanceRatio = invariantRatio.powUp(FixedPoint.ONE.divDown(normalizedWeight));
+        let balanceRatio = invariantRatio.powUp(FixedPoint.ONE.divDown(normalizedWeight));
 
         // Because of rounding up, balanceRatio can be greater than one. Using complement prevents reverts.
-        uint256 amountOutWithoutFee = balance.mulDown(balanceRatio.complement());
+        let amountOutWithoutFee = balance.mulDown(balanceRatio.complement());
 
         // We can now compute how much excess balance is being withdrawn as a result of the virtual swaps, which result
         // in swap fees.
 
         // Swap fees are typically charged on 'token in', but there is no 'token in' here, so we apply it
         // to 'token out'. This results in slightly larger price impact. Fees are rounded up.
-        uint256 taxableAmount = amountOutWithoutFee.mulUp(normalizedWeight.complement());
-        uint256 nonTaxableAmount = amountOutWithoutFee.sub(taxableAmount);
-        uint256 taxableAmountMinusFees = taxableAmount.mulUp(swapFeePercentage.complement());
+        let taxableAmount = amountOutWithoutFee.mulUp(normalizedWeight.complement());
+        let nonTaxableAmount = amountOutWithoutFee.sub(taxableAmount);
+        let taxableAmountMinusFees = taxableAmount.mulUp(swapFeePercentage.complement());
 
-        return nonTaxableAmount.add(taxableAmountMinusFees);
+        nonTaxableAmount.add(taxableAmountMinusFees)
     }
 
     fn _calcTokensOutGivenExactBptIn(
-        uint256[] memory balances,
-        uint256 bptAmountIn,
-        uint256 totalBPT
-    ) internal pure returns (uint256[] memory) {
-        /**********************************************************************************************
+        balances: [u64; 8],
+        bptAmountIn: u64,
+        totalBPT: u64
+    ) -> [u64; 8] {
+        /* *********************************************************************************************
         // exactBPTInForTokensOut                                                                    //
         // (per token)                                                                               //
         // aO = amountOut                  /        bptIn         \                                  //
@@ -379,31 +415,34 @@ impl MyContract for Contract {
         // Since we're computing an amount out, we round down overall. This means rounding down on both the
         // multiplication and division.
 
-        uint256 bptRatio = bptAmountIn.divDown(totalBPT);
+        let bptRatio = bptAmountIn.divDown(totalBPT);
 
-        uint256[] memory amountsOut = new uint256[](balances.length);
-        for (uint256 i = 0; i < balances.length; i++) {
-            amountsOut[i] = balances[i].mulDown(bptRatio);
+        let mut amountsOut: [u64; 8] = [-1, -1, -1, -1, -1, -1, -1, -1];
+        
+        let mut count = 0;
+        while count < 8 {
+            amountsOut[count] = balances[count].mulDown(bptRatio);
+            count = count + 1;
         }
 
-        return amountsOut;
+        amountsOut
     }
 
     fn _calcDueProtocolSwapFeeBptAmount(
-        uint256 totalSupply,
-        uint256 previousInvariant,
-        uint256 currentInvariant,
-        uint256 protocolSwapFeePercentage
-    ) internal pure returns (uint256) {
+        totalSupply: u64,
+        previousInvariant: u64,
+        currentInvariant: u64,
+        protocolSwapFeePercentage: u64
+    ) -> u64 {
         // We round down to prevent issues in the Pool's accounting, even if it means paying slightly less in protocol
         // fees to the Vault.
-        uint256 growth = currentInvariant.divDown(previousInvariant);
+        let growth = currentInvariant.divDown(previousInvariant);
 
         // Shortcut in case there was no growth when comparing the current against the previous invariant.
         // This shouldn't happen outside of rounding errors, but have this safeguard nonetheless to prevent the Pool
         // from entering a locked state in which joins and exits revert while computing accumulated swap fees.
-        if (growth <= FixedPoint.ONE) {
-            return 0;
+        if growth <= FixedPoint.ONE {
+            0
         }
 
         // Assuming the Pool is balanced and token weights have not changed, a growth of the invariant translates into
@@ -419,12 +458,17 @@ impl MyContract for Contract {
 
         // We compute protocol fee * (growth - 1) / growth, as we'll use that value twice.
         // There is no need to use SafeMath since we already checked growth is strictly greater than one.
-        uint256 k = protocolSwapFeePercentage.mulDown(growth - FixedPoint.ONE).divDown(growth);
+        let k = protocolSwapFeePercentage.mulDown(growth - FixedPoint.ONE).divDown(growth);
 
-        uint256 numerator = totalSupply.mulDown(k);
-        uint256 denominator = k.complement();
+        let numerator = totalSupply.mulDown(k);
+        let denominator = k.complement();
 
-        return denominator == 0 ? 0 : numerator.divDown(denominator);
+        if denominator == 0 {
+            0
+        } else {
+            numerator.divDown(denominator)
+        }
+
     }
 
     /**
@@ -435,7 +479,7 @@ impl MyContract for Contract {
      * @param totalSupply - the total supply of the Pool's BPT.
      * @param normalizedWeight - the normalized weight of the token to be added (normalized relative to final weights)
      */
-    fn _calcBptOutAddToken(uint256 totalSupply, uint256 normalizedWeight) internal pure returns (uint256) {
+    fn _calcBptOutAddToken(totalSupply: u64, normalizedWeight: u64) -> u64 {
         // The amount of BPT which is equivalent to the token being added may be calculated by the growth in the
         // sum of the token weights, i.e. if we add a token which will make up 50% of the pool then we should receive
         // 50% of the new supply of BPT.
@@ -446,12 +490,12 @@ impl MyContract for Contract {
         //
         // As we're working with normalized weights `totalWeight` is equal to 1.
 
-        uint256 weightSumRatio = FixedPoint.ONE.divDown(FixedPoint.ONE.sub(normalizedWeight));
+        let weightSumRatio = FixedPoint.ONE.divDown(FixedPoint.ONE.sub(normalizedWeight));
 
         // The amount of BPT to mint is then simply:
         //
         // toMint = totalSupply * (weightSumRatio - 1)
 
-        return totalSupply.mulDown(weightSumRatio.sub(FixedPoint.ONE));
+        totalSupply.mulDown(weightSumRatio.sub(FixedPoint.ONE))
     }
 }
