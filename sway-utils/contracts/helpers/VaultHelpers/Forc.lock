@@ -1,15 +1,7 @@
 [[package]]
-name = 'BalancerErrors'
-source = 'path+from-root-D8D5CFB6A51B7ED6'
-dependencies = ['std']
-
-[[package]]
-name = 'InputHelpers'
+name = 'VaultHelpers'
 source = 'root'
-dependencies = [
-    'BalancerErrors',
-    'std',
-]
+dependencies = ['std']
 
 [[package]]
 name = 'core'

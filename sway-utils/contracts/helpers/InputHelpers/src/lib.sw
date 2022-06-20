@@ -13,6 +13,7 @@ use std::{
     storage::*,
     token::*,
     u128::U128,
+    vec::Vec,
 };
 
 use BalancerErrors::*;
@@ -22,15 +23,19 @@ fn ensureInputLengthMatch(a: U128, b: U128) -> bool {
     return true
 }
 
-fn ensureArrayIsSorted(array:[b256;10]) -> bool {
-    // if (array.length() < 2){
-    //     return false;
-    // }
+fn ensureArrayIsSorted(vector:Vec<b256>) -> bool {
+
+
+    let mut vec: Vec<b256> = vector;
+
+    if vec.len() < 2 {
+        return false;
+    }
 
     let mut a = 1;
-    let mut previous: b256 = array[0];
-    while a < array.len() {
-        let mut current: b256 = array[a];
+    let mut previous: b256 = vec.get(0);
+    while a < vec.len() {
+        let mut current: b256 = vec.get[a];
         require(previous < current, UNSORTED_ARRAY);
         previous = current;
         a = a + 1;
