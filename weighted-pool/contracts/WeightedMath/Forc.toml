@@ -5,3 +5,6 @@ license = "Apache-2.0"
 name = "WeightedMath"
 
 [dependencies]
+Errors = { path = "../../../sway-utils/contracts/helpers/BalancerErrors" }
+FixedPoint = { path = "../../../sway-utils/contracts/math/FixedPoint" }
+Math = { path = "../../../sway-utils/contracts/math/math" }

@@ -2,7 +2,6 @@
 authors = ["ankit"]
 entry = "main.sw"
 license = "Apache-2.0"
-name = "FixedPoint"
+name = "BaseWeightedPool"
 
 [dependencies]
-Errors = { path = "../../helpers/BalancerErrors" }

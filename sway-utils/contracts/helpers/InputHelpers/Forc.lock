@@ -1,11 +1,19 @@
 [[package]]
-name = 'FixedPoint'
-source = 'root'
+name = 'BalancerErrors'
+source = 'path+from-root-D8D5CFB6A51B7ED6'
 dependencies = ['std']
 
 [[package]]
+name = 'InputHelpers'
+source = 'root'
+dependencies = [
+    'BalancerErrors',
+    'std',
+]
+
+[[package]]
 name = 'core'
-source = 'path+from-root-06B8808843B1F7C5'
+source = 'path+from-root-A102296F39438745'
 dependencies = []
 
 [[package]]
