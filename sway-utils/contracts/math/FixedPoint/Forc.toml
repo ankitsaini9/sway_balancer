@@ -5,4 +5,5 @@ license = "Apache-2.0"
 name = "FixedPoint"
 
 [dependencies]
-Errors = { path = "../../helpers/BalancerErrors" }
+BalancerErrors = { path = "../../helpers/BalancerErrors" }
+LogExpMath = { path = "../LogExpMath" }

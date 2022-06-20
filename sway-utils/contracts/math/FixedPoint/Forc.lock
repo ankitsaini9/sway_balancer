@@ -1,11 +1,28 @@
 [[package]]
-name = 'FixedPoint'
-source = 'root'
+name = 'BalancerErrors'
+source = 'path+from-root-06B8808843B1F7C5'
 dependencies = ['std']
 
 [[package]]
-name = 'core'
+name = 'FixedPoint'
+source = 'root'
+dependencies = [
+    'BalancerErrors path+from-root-06B8808843B1F7C5',
+    'LogExpMath',
+    'std',
+]
+
+[[package]]
+name = 'LogExpMath'
 source = 'path+from-root-06B8808843B1F7C5'
+dependencies = [
+    'BalancerErrors path+from-root-06B8808843B1F7C5',
+    'std',
+]
+
+[[package]]
+name = 'core'
+source = 'path+from-root-A102296F39438745'
 dependencies = []
 
 [[package]]

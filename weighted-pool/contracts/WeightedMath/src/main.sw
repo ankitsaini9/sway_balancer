@@ -5,9 +5,8 @@ use std::{
     vec::Vec,
 };
 
-use Errors::*;
 use FixedPoint::*;
-use Math::*;
+use math::*;
 
 // abi MyContract {
 //     fn _calculateInvariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u64;

@@ -1,11 +1,19 @@
 [[package]]
-name = 'LogExpMath'
-source = 'root'
+name = 'BalancerErrors'
+source = 'path+from-root-269D44B866192E8A'
 dependencies = ['std']
 
 [[package]]
+name = 'LogExpMath'
+source = 'root'
+dependencies = [
+    'BalancerErrors',
+    'std',
+]
+
+[[package]]
 name = 'core'
-source = 'path+from-root-269D44B866192E8A'
+source = 'path+from-root-A102296F39438745'
 dependencies = []
 
 [[package]]

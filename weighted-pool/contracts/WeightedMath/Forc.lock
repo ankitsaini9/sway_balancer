@@ -1,12 +1,43 @@
 [[package]]
+name = 'BalancerErrors'
+source = 'path+from-root-AC57B8F80801641E'
+dependencies = ['std']
+
+[[package]]
+name = 'FixedPoint'
+source = 'path+from-root-AC57B8F80801641E'
+dependencies = [
+    'BalancerErrors',
+    'LogExpMath',
+    'std',
+]
+
+[[package]]
+name = 'LogExpMath'
+source = 'path+from-root-AC57B8F80801641E'
+dependencies = [
+    'BalancerErrors',
+    'std',
+]
+
+[[package]]
 name = 'WeightedMath'
 source = 'root'
-dependencies = ['std']
+dependencies = [
+    'FixedPoint',
+    'math',
+    'std',
+]
 
 [[package]]
 name = 'core'
 source = 'path+from-root-A102296F39438745'
 dependencies = []
+
+[[package]]
+name = 'math'
+source = 'path+from-root-AC57B8F80801641E'
+dependencies = ['std']
 
 [[package]]
 name = 'std'

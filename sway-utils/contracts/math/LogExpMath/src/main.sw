@@ -8,12 +8,7 @@ use std::{
     math::*,
 };
 
-
-const X_OUT_OF_BOUNDS = 6;
-const Y_OUT_OF_BOUNDS = 7;
-const PRODUCT_OUT_OF_BOUNDS = 8;
-const INVALID_EXPONENT = 9;
-const OUT_OF_BOUNDS = 100;
+use BalancerErrors::*;
 
 pub fn pow(x: u64, y: u64) -> u64 {
     let ONE_18: U128 = ~U128::new(10.pow(18));
