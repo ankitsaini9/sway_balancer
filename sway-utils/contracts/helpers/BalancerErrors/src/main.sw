@@ -1,9 +1,4 @@
-<<<<<<< HEAD
 library BalancerErrors;
-=======
-library logExpMath;
->>>>>>> 08d5007 (added math libraries)
-
 // Math
 const ADD_OVERFLOW: u64 = 0;
 const SUB_OVERFLOW: u64 = 1;
