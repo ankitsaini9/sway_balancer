@@ -65,7 +65,7 @@ fn compress(value: u64, bitLength: u64, maxUncompressedValue: u64) -> u64 {
         return v2;
     }
 
-    // Special case overloads
+    // Special case overload
 
     /**
      * @dev It is very common for the maximum value to be one: Weighted Pool weights, for example.
