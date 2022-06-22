@@ -8,29 +8,6 @@ use std::{
 use FixedPoint::*;
 use math::*;
 
-// abi MyContract {
-//     fn _calculateInvariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u64;
-//     fn _calcOutGivenIn(balanceIn: u64, weightIn: u64, balanceOut: u64, weightOut: u64, amountIn: u64) -> u64;
-//     fn _calcInGivenOut(balanceIn: u64, weightIn: u64, balanceOut: u64, weightOut: u64, amountOut: u64) -> u64;
-//     fn _calcBptOutGivenExactTokensIn(balances: Vec<u64>, normalizedWeights: Vec<u64>, amountsIn: Vec<u64>, bptTotalSupply: u64, swapFeePercentage: u64) -> u64;
-//     fn _calcTokenInGivenExactBptOut(balance: u64, normalizedWeight: u64, bptAmountOut: u64, bptTotalSupply: u64, swapFeePercentage: u64) -> u64;
-//     fn _calcAllTokensInGivenExactBptOut(balances: Vec<u64>, bptAmountOut: u64, totalBPT: u64) -> Vec<u64>;
-//     fn _calcBptInGivenExactTokensOut(balances: Vec<u64>, normalizedWeights: Vec<u64>, amountsOut: Vec<u64>,bptTotalSupply: u64, swapFeePercentage: u64) -> u64;
-//     fn _calcTokenOutGivenExactBptIn(balance: u64, normalizedWeight: u64, bptAmountIn: u64, bptTotalSupply: u64, swapFeePercentage: u64) -> u64;
-//     fn _calcTokensOutGivenExactBptIn(
-//         balances: Vec<u64>,
-//         bptAmountIn: u64,
-//         totalBPT: u64
-//     ) -> Vec<u64>;
-//     fn _calcDueProtocolSwapFeeBptAmount(
-//         totalSupply: u64,
-//         previousInvariant: u64,
-//         currentInvariant: u64,
-//         protocolSwapFeePercentage: u64
-//     ) -> u64;
-//     fn _calcBptOutAddToken(totalSupply: u64, normalizedWeight: u64) -> u64;
-// }
-
 // A minimum normalized weight imposes a maximum weight ratio. We need this due to limitations in the
 // implementation of the power fn, as these ratios are often exponents.
 const _MIN_WEIGHT: u64 = 1;

@@ -41,12 +41,12 @@ impl MyContract for Contract {
         // upscale here for consistency
         _upscaleArray(balances, _scalingFactors());
 
-        uint256[] memory normalizedWeights = _getNormalizedWeights();
-        return WeightedMath._calculateInvariant(normalizedWeights, balances);
+        let normalizedWeights: Vec<u64> = _getNormalizedWeights();
+        WeightedMath._calculateInvariant(normalizedWeights, balances)
     }
 
-    fn getNormalizedWeights() external view returns (uint256[] memory) {
-        return _getNormalizedWeights();
+    fn getNormalizedWeights() -> Vec<u64> {
+        _getNormalizedWeights()
     }
 
     // Base Pool handlers
@@ -54,37 +54,35 @@ impl MyContract for Contract {
     // Swap
 
     fn _onSwapGivenIn(
-        SwapRequest memory swapRequest,
-        uint256 currentBalanceTokenIn,
-        uint256 currentBalanceTokenOut
-    ) internal virtual override whenNotPaused returns (uint256) {
+        swapRequest: Vec<u64>,
+        currentBalanceTokenIn: u64,
+        currentBalanceTokenOut: u64
+    ) -> u64 {
         // Swaps are disabled while the contract is paused.
 
-        return
             WeightedMath._calcOutGivenIn(
                 currentBalanceTokenIn,
                 _getNormalizedWeight(swapRequest.tokenIn),
                 currentBalanceTokenOut,
                 _getNormalizedWeight(swapRequest.tokenOut),
                 swapRequest.amount
-            );
+            )
     }
 
     fn _onSwapGivenOut(
-        SwapRequest memory swapRequest,
-        uint256 currentBalanceTokenIn,
-        uint256 currentBalanceTokenOut
-    ) internal virtual override whenNotPaused returns (uint256) {
+        swapRequest: Vec<u64>,
+        currentBalanceTokenIn: u64,
+        currentBalanceTokenOut: u64
+    ) -> u64 {
         // Swaps are disabled while the contract is paused.
 
-        return
             WeightedMath._calcInGivenOut(
                 currentBalanceTokenIn,
                 _getNormalizedWeight(swapRequest.tokenIn),
                 currentBalanceTokenOut,
                 _getNormalizedWeight(swapRequest.tokenOut),
                 swapRequest.amount
-            );
+            )
     }
 
     /**
@@ -92,9 +90,9 @@ impl MyContract for Contract {
      * behavior at these steps. This often has to do with protocol fee processing.
      */
     fn _beforeJoinExit(
-        uint256[] memory preBalances,
-        uint256[] memory normalizedWeights,
-        uint256 protocolSwapFeePercentage
+        preBalances: Vec<u64>,
+        normalizedWeights: Vec<u64>,
+        protocolSwapFeePercentage: u64
     ) internal virtual {
         // solhint-disable-previous-line no-empty-blocks
     }
