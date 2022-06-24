@@ -3,35 +3,38 @@ library WeightedMath;
 use std::{
     assert::{assert, require},
     vec::Vec,
+    option::Option,
 };
 
 use FixedPoint::*;
-use math::*;
+use math::{add, sub, max, min, mul};
+use BalancerErrors::*;
+
 
 // A minimum normalized weight imposes a maximum weight ratio. We need this due to limitations in the
 // implementation of the power fn, as these ratios are often exponents.
-const _MIN_WEIGHT: u64 = 1;
+const _MIN_WEIGHT = 1;
 // Having a minimum normalized weight imposes a limit on the maximum number of tokens;
 // i.e., the largest possible pool is one where all tokens have exactly the minimum weight.
-const _MAX_WEIGHTED_TOKENS: u64 = 100;
+const _MAX_WEIGHTED_TOKENS = 100;
 
 // Pool limits that arise from limitations in the fixed point power fn (and the imposed 1:100 maximum weight
 // ratio).
 
 // Swap limits: amounts swapped may not be larger than this percentage of total balance.
-const _MAX_IN_RATIO: u64 = 3;
-const _MAX_OUT_RATIO: u64 = 3;
+const _MAX_IN_RATIO = 3;
+const _MAX_OUT_RATIO = 3;
 
 // Invariant growth limit: non-proportional joins cannot cause the invariant to increase by more than this ratio.
-const _MAX_INVARIANT_RATIO: u64 = 3;
+const _MAX_INVARIANT_RATIO = 3;
 // Invariant shrink limit: non-proportional exits cannot cause the invariant to decrease by less than this ratio.
-const _MIN_INVARIANT_RATIO: u64 = 7;
+const _MIN_INVARIANT_RATIO = 7;
 
 
 
 // @dev Intermediate fn to avoid stack-too-deep errors.
 
-fn _computeJoinExactTokensInInvariantRatio(
+fn _compute_join_exact_tokens_in_invariant_ratio(
     balances: Vec<u64>,
     normalizedWeights: Vec<u64>,
     amountsIn: Vec<u64>,
@@ -39,39 +42,35 @@ fn _computeJoinExactTokensInInvariantRatio(
     invariantRatioWithFees: u64,
     swapFeePercentage: u64
 ) -> u64 {
-    // Swap fees are charged on all tokens that are being added in a larger proportion than the overall invariant
-    // increase.
     let mut invariantRatio = ONE;
 
     let mut count = 0;
     while count < balances.len() {
-        let mut amountInWithoutFee: u64 = 0;
+        let mut amountInWithoutFee = 0;
 
-        if balanceRatiosWithFee.get(count) > invariantRatioWithFees {
-            let nonTaxableAmount = balances[count].mulDown(invariantRatioWithFees.sub(ONE));
-            let taxableAmount = amountsIn[count].sub(nonTaxableAmount);
-            let swapFee = taxableAmount.mulUp(swapFeePercentage);
+        if balanceRatiosWithFee.get(count).unwrap() > invariantRatioWithFees {
+            let nonTaxableAmount = mul_down(balances.get(count).unwrap(), sub(invariantRatioWithFees, ONE));
+            let taxableAmount = sub(amountsIn.get(count).unwrap(), nonTaxableAmount);
+            let swapFee = mul_up(taxableAmount, swapFeePercentage);
 
-            amountInWithoutFee = nonTaxableAmount.add(taxableAmount.sub(swapFee));
+            amountInWithoutFee = add(nonTaxableAmount, sub(taxableAmount, swapFee));
         } else {
-            amountInWithoutFee = amountsIn[count];
+            amountInWithoutFee = amountsIn.get(count).unwrap();
         }
-        let balanceRatio = balances[count].add(amountInWithoutFee).divDown(balances[count]);
+        let balanceRatio = div_down(add(balances.get(count).unwrap(), amountInWithoutFee), balances.get(count).unwrap());
 
-        invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[count]));
+        invariantRatio = mul_down(invariantRatio, pow_down(balanceRatio, normalizedWeights.get(count).unwrap()));
         
         count = count + 1;
         
-        invariantRatio
-
     }
-
+    invariantRatio
 }
 
 
 
 // @dev Intermediate fn to avoid stack-too-deep errors.
-fn _computeExitExactTokensOutInvariantRatio(
+fn _compute_exit_exact_tokens_out_invariant_ratio(
     balances: Vec<u64>,
     normalizedWeights: Vec<u64>,
     amountsOut: Vec<u64>,
@@ -79,33 +78,31 @@ fn _computeExitExactTokensOutInvariantRatio(
     invariantRatioWithoutFees: u64,
     swapFeePercentage: u64
 ) -> u64 {
-    invariantRatio = ONE;
+    let invariantRatio = ONE;
 
     let mut count = 0;
     while count < balances.len() {
         // Swap fees are typically charged on 'token in', but there is no 'token in' here, so we apply it to
         // 'token out'. This results in slightly larger price impact.
 
-        let mut amountOutWithFee: u64 = 0;
-        if (invariantRatioWithoutFees > balanceRatiosWithoutFee[count]) {
-            let nonTaxableAmount = balances[count].mulDown(invariantRatioWithoutFees.complement());
-            let taxableAmount = amountsOut[count].sub(nonTaxableAmount);
-            let taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
+        let mut amountOutWithFee = 0;
+        if (invariantRatioWithoutFees > balanceRatiosWithoutFee.get(count).unwrap()) {
+            let nonTaxableAmount = mul_down(balances.get(count).unwrap(), complement(invariantRatioWithoutFees));
+            let taxableAmount = sub(amountsOut.get(count).unwrap(), nonTaxableAmount);
+            let taxableAmountPlusFees = div_up(taxableAmount, complement(swapFeePercentage));
 
-            amountOutWithFee = nonTaxableAmount.add(taxableAmountPlusFees);
+            amountOutWithFee = add(nonTaxableAmount, taxableAmountPlusFees);
         } else {
-            amountOutWithFee = amountsOut[count];
+            amountOutWithFee = amountsOut.get(count).unwrap();
         }
 
-        let balanceRatio = balances[count].sub(amountOutWithFee).divDown(balances[count]);
+        let balanceRatio = div_down(sub(balances.get(count).unwrap(), amountOutWithFee), balances.get(count).unwrap());
 
-        let invariantRatio = invariantRatio.mulDown(balanceRatio.powDown(normalizedWeights[count]));
+        let invariantRatio = mul_down(invariantRatio, pow_down(balanceRatio, normalizedWeights.get(count).unwrap()));
         
         count = count + 1;
-        
-        invariantRatio
-
     }
+    invariantRatio
 }
 
 
@@ -122,7 +119,7 @@ fn _computeExitExactTokensOutInvariantRatio(
 // Invariant is used to collect protocol swap fees by comparing its value between two times.
 // So we can round always to the same direction. It is also used to initiate the BPT amount
 // and, because there is a minimum BPT, we round down the invariant.
-pub fn _calculateInvariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u64 {       
+pub fn _calculate_invariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u64 {       
     
     // invariant               _____                                                             //
     // wi = weight index i      | |      wi                                                      //
@@ -134,7 +131,7 @@ pub fn _calculateInvariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u
 
     let mut count = 0;
     while count < balances.len() {
-        invariant = invariant.mulDown(balances[count].powDown(normalizedWeights[count]));
+        invariant = mul_down(invariant, pow_down(balances.get(count).unwrap(), normalizedWeights.get(count).unwrap()));
         count = count + 1;
     } 
 
@@ -144,7 +141,7 @@ pub fn _calculateInvariant(normalizedWeights: Vec<u64>, balances: Vec<u64>) -> u
 
 // Computes how many tokens can be taken out of a pool if `amountIn` are sent, given the
 // current balances and weights.
-pub fn _calcOutGivenIn(
+pub fn _calc_out_given_in(
     balanceIn: u64,
     weightIn: u64,
     balanceOut: u64,
@@ -167,19 +164,19 @@ pub fn _calcOutGivenIn(
     // Because bI / (bI + aI) <= 1, the exponent rounds down.
 
     // Cannot exceed maximum in ratio
-    require(amountIn <= balanceIn.mulDown(_MAX_IN_RATIO), MAX_IN_RATIO); 
+    require(amountIn <= mul_down(balanceIn, _MAX_IN_RATIO), MAX_IN_RATIO); 
 
-    let denominator: u64 = balanceIn.add(amountIn);
-    let base: u64 = balanceIn.divUp(denominator);
-    let exponent: u64 = weightIn.divDown(weightOut);
-    let power: u64 = base.powUp(exponent);
+    let denominator = add(balanceIn, amountIn);
+    let base = div_up(balanceIn, denominator);
+    let exponent = div_down(weightIn, weightOut);
+    let power = pow_up(base, exponent);
 
-    balanceOut.mulDown(power.complement())
+    mul_down(balanceOut, complement(power))
 }
 
 // Computes how many tokens must be sent to a pool in order to take `amountOut`, given the
 // current balances and weights.
-pub fn _calcInGivenOut(
+pub fn _calc_in_given_out(
     balanceIn: u64,
     weightIn: u64,
     balanceOut: u64,
@@ -202,20 +199,20 @@ pub fn _calcInGivenOut(
     // Because b0 / (b0 - a0) >= 1, the exponent rounds up.
 
     // Cannot exceed maximum out ratio
-    require(amountOut <= balanceOut.mulDown(_MAX_OUT_RATIO), MAX_OUT_RATIO);
+    require(amountOut <= mul_down(balanceOut, _MAX_OUT_RATIO), MAX_OUT_RATIO);
 
-    let base = balanceOut.divUp(balanceOut.sub(amountOut));
-    let exponent = weightOut.divUp(weightIn);
-    let power = base.powUp(exponent);
+    let base = div_up(balanceOut, sub(balanceOut, amountOut));
+    let exponent = div_up(weightOut, weightIn);
+    let power = pow_up(base, exponent);
 
     // Because the base is larger than one (and the power rounds up), the power should always be larger than one, so
     // the following subtraction should never revert.
-    let ratio = power.sub(ONE);
+    let ratio = sub(power, ONE);
 
-    balanceIn.mulUp(ratio)
+    mul_up(balanceIn, ratio)
 }
 
-pub fn _calcBptOutGivenExactTokensIn(
+pub fn _calc_bpt_out_given_exact_tokens_in(
     balances: Vec<u64>,
     normalizedWeights: Vec<u64>,
     amountsIn: Vec<u64>,
@@ -226,16 +223,16 @@ pub fn _calcBptOutGivenExactTokensIn(
 
     let mut balanceRatiosWithFee = ~Vec::new::<u64>();
 
-    let mut invariantRatioWithFees: u64 = 0;
+    let mut invariantRatioWithFees = 0;
 
     let mut count = 0;
     while count < balances.len() {
-        balanceRatiosWithFee.push(balances[count].add(amountsIn[count]).divDown(balances[count]));
-        invariantRatioWithFees = invariantRatioWithFees.add(balanceRatiosWithFee[count].mulDown(normalizedWeights[count]));
+        balanceRatiosWithFee.push(div_down(add(balances.get(count).unwrap(), amountsIn.get(count).unwrap()), balances.get(count).unwrap()));
+        invariantRatioWithFees = add(invariantRatioWithFees, mul_down(balanceRatiosWithFee.get(count).unwrap(), normalizedWeights.get(count).unwrap()));
         count = count + 1;
     }
 
-    let invariantRatio = _computeJoinExactTokensInInvariantRatio(
+    let invariantRatio = _compute_join_exact_tokens_in_invariant_ratio(
         balances,
         normalizedWeights,
         amountsIn,
@@ -245,14 +242,14 @@ pub fn _calcBptOutGivenExactTokensIn(
     );
 
     if invariantRatio > ONE {
-        bptTotalSupply.mulDown(invariantRatio.sub(ONE))
+        mul_down(bptTotalSupply, sub(invariantRatio, ONE))
     } 
     else {
         0
     }
 }
 
-pub fn _calcTokenInGivenExactBptOut(
+pub fn _calc_token_in_given_exact_bpt_out(
     balance: u64,
     normalizedWeight: u64,
     bptAmountOut: u64,
@@ -269,25 +266,25 @@ pub fn _calcTokenInGivenExactBptOut(
     // Token in, so we round up overall.
 
     // Calculate the factor by which the invariant will increase after minting BPTAmountOut
-    let invariantRatio = bptTotalSupply.add(bptAmountOut).divUp(bptTotalSupply);
+    let invariantRatio = div_up(add(bptTotalSupply, bptAmountOut), bptTotalSupply);
     require(invariantRatio <= _MAX_INVARIANT_RATIO, MAX_OUT_BPT_FOR_TOKEN_IN);
 
     // Calculate by how much the token balance has to increase to match the invariantRatio
-    let balanceRatio = invariantRatio.powUp(ONE.divUp(normalizedWeight));
+    let balanceRatio = pow_up(invariantRatio, div_up(ONE, normalizedWeight));
 
-    let amountInWithoutFee = balance.mulUp(balanceRatio.sub(ONE));
+    let amountInWithoutFee = mul_up(balance, sub(balanceRatio, ONE));
 
     // We can now compute how much extra balance is being deposited and used in virtual swaps, and charge swap fees
     // accordingly.
-    let taxableAmount = amountInWithoutFee.mulUp(normalizedWeight.complement());
-    let nonTaxableAmount = amountInWithoutFee.sub(taxableAmount);
+    let taxableAmount = mul_up(amountInWithoutFee, complement(normalizedWeight));
+    let nonTaxableAmount = sub(amountInWithoutFee, taxableAmount);
 
-    let taxableAmountPlusFees = taxableAmount.divUp(swapFeePercentage.complement());
+    let taxableAmountPlusFees = div_up(taxableAmount, complement(swapFeePercentage));
 
-    nonTaxableAmount.add(taxableAmountPlusFees)
+    add(nonTaxableAmount, taxableAmountPlusFees)
 }
 
-pub fn _calcAllTokensInGivenExactBptOut(
+pub fn _calc_all_tokens_in_given_exact_bpt_out(
     balances: Vec<u64>,
     bptAmountOut: u64,
     totalBPT: u64
@@ -301,20 +298,20 @@ pub fn _calcAllTokensInGivenExactBptOut(
     // bpt = totalBPT                                                                  //
 
     // Tokens in, so we round up overall.
-    let bptRatio = bptAmountOut.divUp(totalBPT);
+    let bptRatio = div_up(bptAmountOut, totalBPT);
 
     let mut amountsIn = ~Vec::new::<u64>();
 
     let mut count = 0;
     while count < balances.len() {
-        amountsIn.push(balances[count].mulUp(bptRatio));
+        amountsIn.push(mul_up(balances.get(count).unwrap(), bptRatio));
         count = count + 1;
     }
 
     amountsIn
 }
 
-pub fn _calcBptInGivenExactTokensOut(
+pub fn _calc_bpt_in_given_exact_tokens_out(
     balances: Vec<u64>,
     normalizedWeights: Vec<u64>,
     amountsOut: Vec<u64>,
@@ -324,18 +321,16 @@ pub fn _calcBptInGivenExactTokensOut(
     // BPT in, so we round up overall.
 
     let mut balanceRatiosWithoutFee = ~Vec::new::<u64>();
-    let mut invariantRatioWithoutFees: u64 = 0;
+    let mut invariantRatioWithoutFees = 0;
 
     let mut count = 0;
     while count < balances.len() {
-        balanceRatiosWithoutFee.push(balances[count].sub(amountsOut[count]).divUp(balances[count]));
-        invariantRatioWithoutFees = invariantRatioWithoutFees.add(
-            balanceRatiosWithoutFee[count].mulUp(normalizedWeights[count])
-        );
+        balanceRatiosWithoutFee.push(div_up(sub(balances.get(count).unwrap(), amountsOut.get(count).unwrap()), balances.get(count).unwrap()));
+        invariantRatioWithoutFees = mul_up(add(invariantRatioWithoutFees, balanceRatiosWithoutFee.get(count).unwrap()), normalizedWeights.get(count).unwrap());
         count = count + 1;
     }
 
-    let invariantRatio = _computeExitExactTokensOutInvariantRatio(
+    let invariantRatio = _compute_exit_exact_tokens_out_invariant_ratio(
         balances,
         normalizedWeights,
         amountsOut,
@@ -344,10 +339,10 @@ pub fn _calcBptInGivenExactTokensOut(
         swapFeePercentage
     );
 
-    bptTotalSupply.mulUp(invariantRatio.complement())
+    mul_up(bptTotalSupply, complement(invariantRatio))
 }
 
-pub fn _calcTokenOutGivenExactBptIn(
+pub fn _calc_token_out_given_exact_bpt_in(
     balance: u64,
     normalizedWeight: u64,
     bptAmountIn: u64,
@@ -365,28 +360,28 @@ pub fn _calcTokenOutGivenExactBptIn(
     // rounds up). Because (totalBPT - bptIn) / totalBPT <= 1, the exponent rounds down.
 
     // Calculate the factor by which the invariant will decrease after burning BPTAmountIn
-    let invariantRatio = bptTotalSupply.sub(bptAmountIn).divUp(bptTotalSupply);
+    let invariantRatio = div_up(sub(bptTotalSupply, bptAmountIn), bptTotalSupply);
     require(invariantRatio >= _MIN_INVARIANT_RATIO, MIN_BPT_IN_FOR_TOKEN_OUT);
 
     // Calculate by how much the token balance has to decrease to match invariantRatio
-    let balanceRatio = invariantRatio.powUp(ONE.divDown(normalizedWeight));
+    let balanceRatio = pow_up(invariantRatio, div_down(ONE, normalizedWeight));
 
     // Because of rounding up, balanceRatio can be greater than one. Using complement prevents reverts.
-    let amountOutWithoutFee = balance.mulDown(balanceRatio.complement());
+    let amountOutWithoutFee = mul_down(balance, complement(balanceRatio));
 
     // We can now compute how much excess balance is being withdrawn as a result of the virtual swaps, which result
     // in swap fees.
 
     // Swap fees are typically charged on 'token in', but there is no 'token in' here, so we apply it
     // to 'token out'. This results in slightly larger price impact. Fees are rounded up.
-    let taxableAmount = amountOutWithoutFee.mulUp(normalizedWeight.complement());
-    let nonTaxableAmount = amountOutWithoutFee.sub(taxableAmount);
-    let taxableAmountMinusFees = taxableAmount.mulUp(swapFeePercentage.complement());
+    let taxableAmount = mul_up(amountOutWithoutFee, complement(normalizedWeight));
+    let nonTaxableAmount = sub(amountOutWithoutFee, taxableAmount);
+    let taxableAmountMinusFees = mul_up(taxableAmount, complement(swapFeePercentage));
 
-    nonTaxableAmount.add(taxableAmountMinusFees)
+    add(nonTaxableAmount, taxableAmountMinusFees)
 }
 
-pub fn _calcTokensOutGivenExactBptIn(
+pub fn _calc_tokens_out_given_exact_bpt_in(
     balances: Vec<u64>,
     bptAmountIn: u64,
     totalBPT: u64
@@ -401,20 +396,20 @@ pub fn _calcTokensOutGivenExactBptIn(
     // Since we're computing an amount out, we round down overall. This means rounding down on both the
     // multiplication and division.
 
-    let bptRatio = bptAmountIn.divDown(totalBPT);
+    let bptRatio = div_down(bptAmountIn, totalBPT);
 
     let mut amountsOut = ~Vec::new::<u64>();
     
     let mut count = 0;
     while count < balances.len() {
-        amountsOut.push(balances[count].mulDown(bptRatio));
+        amountsOut.push(mul_down(balances.get(count).unwrap(), bptRatio));
         count = count + 1;
     }
 
     amountsOut
 }
 
-pub fn _calcDueProtocolSwapFeeBptAmount(
+pub fn _calc_due_protocol_swap_fee_bpt_amount(
     totalSupply: u64,
     previousInvariant: u64,
     currentInvariant: u64,
@@ -422,13 +417,14 @@ pub fn _calcDueProtocolSwapFeeBptAmount(
 ) -> u64 {
     // We round down to prevent issues in the Pool's accounting, even if it means paying slightly less in protocol
     // fees to the Vault.
-    let growth = currentInvariant.divDown(previousInvariant);
+    let growth = div_down(currentInvariant, previousInvariant);
 
     // Shortcut in case there was no growth when comparing the current against the previous invariant.
     // This shouldn't happen outside of rounding errors, but have this safeguard nonetheless to prevent the Pool
     // from entering a locked state in which joins and exits revert while computing accumulated swap fees.
     if growth <= ONE {
-        0
+        // NOTE:- without adding return variable it's giving error.
+        return 0;
     }
 
     // Assuming the Pool is balanced and token weights have not changed, a growth of the invariant translates into
@@ -444,15 +440,15 @@ pub fn _calcDueProtocolSwapFeeBptAmount(
 
     // We compute protocol fee * (growth - 1) / growth, as we'll use that value twice.
     // There is no need to use SafeMath since we already checked growth is strictly greater than one.
-    let k = protocolSwapFeePercentage.mulDown(growth - ONE).divDown(growth);
+    let k = div_down(mul_down(protocolSwapFeePercentage, growth - ONE), growth);
 
-    let numerator = totalSupply.mulDown(k);
-    let denominator = k.complement();
+    let numerator = mul_down(totalSupply, k);
+    let denominator = complement(k);
 
     if denominator == 0 {
         0
     } else {
-        numerator.divDown(denominator)
+        div_down(numerator, denominator)
     }
 
 }
@@ -465,7 +461,7 @@ pub fn _calcDueProtocolSwapFeeBptAmount(
     * @param totalSupply - the total supply of the Pool's BPT.
     * @param normalizedWeight - the normalized weight of the token to be added (normalized relative to final weights)
 */
-pub fn _calcBptOutAddToken(totalSupply: u64, normalizedWeight: u64) -> u64 {
+pub fn _calc_bpt_out_add_token(totalSupply: u64, normalizedWeight: u64) -> u64 {
     // The amount of BPT which is equivalent to the token being added may be calculated by the growth in the
     // sum of the token weights, i.e. if we add a token which will make up 50% of the pool then we should receive
     // 50% of the new supply of BPT.
@@ -476,13 +472,12 @@ pub fn _calcBptOutAddToken(totalSupply: u64, normalizedWeight: u64) -> u64 {
     //
     // As we're working with normalized weights `totalWeight` is equal to 1.
 
-    let weightSumRatio = ONE.divDown(ONE.sub(normalizedWeight));
+    let weightSumRatio = div_down(ONE, sub(ONE, normalizedWeight));
 
     // The amount of BPT to mint is then simply:
     //
     // toMint = totalSupply * (weightSumRatio - 1)
 
-    totalSupply.mulDown(weightSumRatio.sub(ONE))
+    mul_down(totalSupply, sub(weightSumRatio, ONE))
 }
 
-// }

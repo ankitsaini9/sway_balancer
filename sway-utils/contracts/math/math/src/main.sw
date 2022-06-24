@@ -26,7 +26,7 @@ pub fn sub(a: u64, b: u64) -> u64 {
     c
 }
 
-    pub fn max(a: u64, b: u64) -> u64 {
+pub fn max(a: u64, b: u64) -> u64 {
     let mut c: u64 = 0;
     if a >= b {
         c = a

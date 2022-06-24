@@ -17,7 +17,7 @@ const MAX_POW_RELATIVE_ERROR: u64 = 10000; // 10^(-14)
 const MIN_POW_BASE_FREE_EXPONENT: u64 = 7;
 
 
-pub fn  add(a: u64, b: u64) -> u64 {
+fn  add(a: u64, b: u64) -> u64 {
     // Fixed Point addition is the same as regular checked addition
 
     let c = a + b;
@@ -25,7 +25,7 @@ pub fn  add(a: u64, b: u64) -> u64 {
     c
 }
 
-pub fn  sub(a: u64, b: u64) -> u64 {
+fn  sub(a: u64, b: u64) -> u64 {
     // Fixed Point addition is the same as regular checked addition
 
     require(b <= a, SUB_OVERFLOW);

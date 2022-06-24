@@ -7,3 +7,4 @@ name = "WeightedMath"
 [dependencies]
 FixedPoint = { path = "../../../sway-utils/contracts/math/FixedPoint" }
 math = { path = "../../../sway-utils/contracts/math/math" }
+BalancerErrors = { path = "../../../sway-utils/contracts/helpers/BalancerErrors" }

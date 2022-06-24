@@ -7,7 +7,7 @@ dependencies = ['std']
 name = 'FixedPoint'
 source = 'root'
 dependencies = [
-    'BalancerErrors path+from-root-06B8808843B1F7C5',
+    'BalancerErrors',
     'LogExpMath',
     'std',
 ]
@@ -16,7 +16,7 @@ dependencies = [
 name = 'LogExpMath'
 source = 'path+from-root-06B8808843B1F7C5'
 dependencies = [
-    'BalancerErrors path+from-root-06B8808843B1F7C5',
+    'BalancerErrors',
     'std',
 ]
 

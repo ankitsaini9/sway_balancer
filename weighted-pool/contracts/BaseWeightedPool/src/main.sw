@@ -14,6 +14,8 @@ use std::{
     token::*,
     u128::U128,
     vec::Vec,
+
+    
 };
 
 // abi MyContract {
@@ -54,7 +56,7 @@ impl MyContract for Contract {
     // Swap
 
     fn _onSwapGivenIn(
-        swapRequest: Vec<u64>,
+        swapRequest: (u64),
         currentBalanceTokenIn: u64,
         currentBalanceTokenOut: u64
     ) -> u64 {
